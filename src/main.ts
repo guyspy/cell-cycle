@@ -42,7 +42,7 @@ async function init() {
   const piecesManager = createMetaballPieces(scene, camera, engine.getState(), cells);
 
   // Camera controller
-  const cameraCtrl = new CameraController(camera, renderer, cells);
+  const cameraCtrl = new CameraController(camera, renderer);
 
   // UI overlay
   const ui = new UIManager(uiRoot, engine, cameraCtrl);

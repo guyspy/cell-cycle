@@ -32,6 +32,13 @@ export interface SpringSystemAPI {
     position: THREE.Vector3,
   ): void;
 
+  /** Smoothly animate a piece's position to a new target (updates basePos). */
+  animateTo(
+    playerId: number,
+    pieceId: number,
+    position: THREE.Vector3,
+  ): void;
+
   /** Advance all springs and return current per-piece states. */
   update(dt: number): Map<string, PieceSpringState>;
 }
@@ -41,6 +48,7 @@ export interface SpringSystemAPI {
 // ---------------------------------------------------------------------------
 
 const POS_SPRING = { stiffness: 180, damping: 12, mass: 1 };
+const POS_Y_SPRING = { stiffness: 220, damping: 14, mass: 0.9 };
 const SCALE_SPRING = { stiffness: 250, damping: 10, mass: 0.8 };
 
 // Rest scale: squashed sphere
@@ -140,7 +148,7 @@ export function createSpringSystem(): SpringSystemAPI {
 
     const set: PieceSpringSet = {
       posX: makeSpring(position.x, POS_SPRING),
-      posY: makeSpring(position.y, POS_SPRING),
+      posY: makeSpring(position.y, POS_Y_SPRING),
       posZ: makeSpring(position.z, POS_SPRING),
       scaleX: makeSpring(REST_SCALE_X, SCALE_SPRING),
       scaleY: makeSpring(REST_SCALE_Y, SCALE_SPRING),
@@ -212,13 +220,13 @@ export function createSpringSystem(): SpringSystemAPI {
     setSpringTarget(set.scaleZ, 1.3);
     setSpringTarget(set.posY, currentY - 0.1);
 
-    await delay(100);
+    await delay(60);
 
     // --- 2. Launch ---
     setSpringTarget(set.scaleY, 1.1);
     setSpringTarget(set.scaleX, 0.8);
     setSpringTarget(set.scaleZ, 0.8);
-    setSpringTarget(set.posY, target.y + 1.5);
+    setSpringTarget(set.posY, target.y + 0.7);
     setSpringTarget(set.posX, target.x);
     setSpringTarget(set.posZ, target.z);
 
@@ -229,10 +237,9 @@ export function createSpringSystem(): SpringSystemAPI {
     setSpringTarget(set.scaleX, 1.0);
     setSpringTarget(set.scaleZ, 1.0);
 
-    // Wait for Y to start falling back (peak detection): we wait until the
-    // position spring has passed the apex. Instead of exact peak detection we
-    // simply wait for the Y spring to settle past its overshoot.
-    await allAtRest([set.posX, set.posZ]);
+    // Short delay instead of waiting for X/Z to fully rest — lets the piece
+    // fall while still moving horizontally, creating a smooth arc.
+    await delay(120);
 
     // --- 4. Land ---
     setSpringTarget(set.posY, target.y);
@@ -241,22 +248,16 @@ export function createSpringSystem(): SpringSystemAPI {
     setSpringTarget(set.scaleZ, 1.4);
 
     // Wait a moment then settle scale
-    await delay(80);
+    await delay(50);
 
     // --- 5. Settle ---
     setSpringTarget(set.scaleY, REST_SCALE_Y);
     setSpringTarget(set.scaleX, REST_SCALE_X);
     setSpringTarget(set.scaleZ, REST_SCALE_Z);
 
-    // Wait for everything to come to rest before the next hop
-    await allAtRest([
-      set.posX,
-      set.posY,
-      set.posZ,
-      set.scaleX,
-      set.scaleY,
-      set.scaleZ,
-    ]);
+    // Short fixed delay instead of waiting for mathematical rest — "close
+    // enough" keeps multi-hop chains feeling snappy.
+    await delay(200);
   }
 
   /** Convenience: update a spring's toValue from its current position and restart. */
@@ -321,12 +322,33 @@ export function createSpringSystem(): SpringSystemAPI {
   }
 
   // -----------------------------------------------------------------------
+  // animateTo — smoothly spring position to a new target (for clustering)
+  // -----------------------------------------------------------------------
+
+  function animateTo(
+    playerId: number,
+    pieceId: number,
+    position: THREE.Vector3,
+  ): void {
+    const key = pieceKey(playerId, pieceId);
+    const set = pieces.get(key);
+    if (!set || set.hopping) return;
+
+    set.basePos.copy(position);
+
+    setSpringTarget(set.posX, position.x);
+    setSpringTarget(set.posY, position.y);
+    setSpringTarget(set.posZ, position.z);
+  }
+
+  // -----------------------------------------------------------------------
   // Public API
   // -----------------------------------------------------------------------
 
   return {
     addPiece,
     animateHop,
+    animateTo,
     setPosition,
     update,
   };
